@@ -1,10 +1,15 @@
+use crate::models::{Chat, Message};
+use crate::storage;
 use rusqlite::{Connection, Result};
 use serde::Serialize;
 use std::path::Path;
-use tauri::Manager;
-use crate::models::{Chat, Message};
 
-pub fn init_db<P: AsRef<Path>>(db_path: P) -> Result<Connection> {
+fn open_database(app_handle: &tauri::AppHandle) -> Result<Connection, String> {
+    let app_data_dir = storage::app_data_dir(app_handle)?;
+    Connection::open(app_data_dir.join("database.sqlite")).map_err(|e| e.to_string())
+}
+
+pub fn init_db<P: AsRef<Path>>(db_path: P) -> Result<()> {
     let conn = Connection::open(db_path)?;
     
     conn.execute(
@@ -28,7 +33,6 @@ pub fn init_db<P: AsRef<Path>>(db_path: P) -> Result<Connection> {
             original_text TEXT,
             media_path TEXT,
             media_filename TEXT,
-            media_mime_type TEXT,
             edited BOOLEAN DEFAULT 0,
             deleted BOOLEAN DEFAULT 0,
             system BOOLEAN DEFAULT 0,
@@ -62,14 +66,12 @@ pub fn init_db<P: AsRef<Path>>(db_path: P) -> Result<Connection> {
         [],
     )?;
 
-    Ok(conn)
+    Ok(())
 }
 
 #[tauri::command]
 pub fn get_chats(app_handle: tauri::AppHandle) -> Result<Vec<Chat>, String> {
-    let app_data_dir = app_handle.path().app_data_dir().unwrap();
-    let db_path = app_data_dir.join("database.sqlite");
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+    let conn = open_database(&app_handle)?;
 
     let mut stmt = conn.prepare("SELECT id, name, created_at, message_count FROM chats ORDER BY created_at DESC").map_err(|e| e.to_string())?;
     
@@ -91,50 +93,11 @@ pub fn get_chats(app_handle: tauri::AppHandle) -> Result<Vec<Chat>, String> {
 }
 
 #[tauri::command]
-pub fn get_messages(app_handle: tauri::AppHandle, chat_id: String, offset: i64, limit: i64) -> Result<Vec<Message>, String> {
-    let app_data_dir = app_handle.path().app_data_dir().unwrap();
-    let db_path = app_data_dir.join("database.sqlite");
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
-
-    let mut stmt = conn.prepare(
-        "SELECT id, chat_id, timestamp, sender, msg_type, text, original_text, media_path, media_filename, media_mime_type, edited, deleted, system 
-         FROM messages WHERE chat_id = ?1 ORDER BY rowid ASC LIMIT ?2 OFFSET ?3"
-    ).map_err(|e| e.to_string())?;
-    
-    let msg_iter = stmt.query_map([&chat_id, &limit.to_string(), &offset.to_string()], |row| {
-        Ok(Message {
-            id: row.get(0)?,
-            chat_id: row.get(1)?,
-            timestamp: row.get(2)?,
-            sender: row.get(3)?,
-            msg_type: row.get(4)?,
-            text: row.get(5)?,
-            original_text: row.get(6)?,
-            media_path: row.get(7)?,
-            media_filename: row.get(8)?,
-            media_mime_type: row.get(9)?,
-            edited: row.get(10)?,
-            deleted: row.get(11)?,
-            system: row.get(12)?,
-        })
-    }).map_err(|e| e.to_string())?;
-
-    let mut msgs = Vec::new();
-    for msg in msg_iter {
-        msgs.push(msg.map_err(|e| e.to_string())?);
-    }
-    
-    Ok(msgs)
-}
-
-#[tauri::command]
 pub fn get_all_messages(app_handle: tauri::AppHandle, chat_id: String) -> Result<Vec<Message>, String> {
-    let app_data_dir = app_handle.path().app_data_dir().unwrap();
-    let db_path = app_data_dir.join("database.sqlite");
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+    let conn = open_database(&app_handle)?;
 
     let mut stmt = conn.prepare(
-        "SELECT id, chat_id, timestamp, sender, msg_type, text, original_text, media_path, media_filename, media_mime_type, edited, deleted, system 
+        "SELECT id, chat_id, timestamp, sender, msg_type, text, original_text, media_path, media_filename, edited, deleted, system
          FROM messages WHERE chat_id = ?1 ORDER BY rowid ASC"
     ).map_err(|e| e.to_string())?;
     
@@ -149,10 +112,9 @@ pub fn get_all_messages(app_handle: tauri::AppHandle, chat_id: String) -> Result
             original_text: row.get(6)?,
             media_path: row.get(7)?,
             media_filename: row.get(8)?,
-            media_mime_type: row.get(9)?,
-            edited: row.get(10)?,
-            deleted: row.get(11)?,
-            system: row.get(12)?,
+            edited: row.get(9)?,
+            deleted: row.get(10)?,
+            system: row.get(11)?,
         })
     }).map_err(|e| e.to_string())?;
 
@@ -162,65 +124,11 @@ pub fn get_all_messages(app_handle: tauri::AppHandle, chat_id: String) -> Result
     }
     
     Ok(msgs)
-}
-
-#[tauri::command]
-pub fn search_messages(app_handle: tauri::AppHandle, chat_id: String, query: String) -> Result<Vec<Message>, String> {
-    let app_data_dir = app_handle.path().app_data_dir().unwrap();
-    let db_path = app_data_dir.join("database.sqlite");
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
-
-    let mut stmt = conn.prepare(
-        "SELECT id, chat_id, timestamp, sender, msg_type, text, original_text, media_path, media_filename, media_mime_type, edited, deleted, system 
-         FROM messages WHERE chat_id = ?1 AND text LIKE ?2 ORDER BY rowid ASC"
-    ).map_err(|e| e.to_string())?;
-    
-    let db_query = format!("%{}%", query);
-    let msg_iter = stmt.query_map([&chat_id, &db_query], |row| {
-        Ok(Message {
-            id: row.get(0)?,
-            chat_id: row.get(1)?,
-            timestamp: row.get(2)?,
-            sender: row.get(3)?,
-            msg_type: row.get(4)?,
-            text: row.get(5)?,
-            original_text: row.get(6)?,
-            media_path: row.get(7)?,
-            media_filename: row.get(8)?,
-            media_mime_type: row.get(9)?,
-            edited: row.get(10)?,
-            deleted: row.get(11)?,
-            system: row.get(12)?,
-        })
-    }).map_err(|e| e.to_string())?;
-
-    let mut msgs = Vec::new();
-    for msg in msg_iter {
-        msgs.push(msg.map_err(|e| e.to_string())?);
-    }
-    
-    Ok(msgs)
-}
-
-#[tauri::command]
-pub fn delete_chat(app_handle: tauri::AppHandle, chat_id: String) -> Result<(), String> {
-    let app_data_dir = app_handle.path().app_data_dir().unwrap();
-    let db_path = app_data_dir.join("database.sqlite");
-    let mut conn = Connection::open(db_path).map_err(|e| e.to_string())?;
-
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM messages WHERE chat_id = ?1", [&chat_id]).map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM chats WHERE id = ?1", [&chat_id]).map_err(|e| e.to_string())?;
-    tx.commit().map_err(|e| e.to_string())?;
-
-    Ok(())
 }
 
 #[tauri::command]
 pub fn rename_chat(app_handle: tauri::AppHandle, chat_id: String, new_name: String) -> Result<(), String> {
-    let app_data_dir = app_handle.path().app_data_dir().unwrap();
-    let db_path = app_data_dir.join("database.sqlite");
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+    let conn = open_database(&app_handle)?;
 
     conn.execute(
         "UPDATE chats SET name = ?1 WHERE id = ?2",
@@ -232,9 +140,7 @@ pub fn rename_chat(app_handle: tauri::AppHandle, chat_id: String, new_name: Stri
 
 #[tauri::command]
 pub fn edit_message(app_handle: tauri::AppHandle, msg_id: String, new_text: String) -> Result<(), String> {
-    let app_data_dir = app_handle.path().app_data_dir().unwrap();
-    let db_path = app_data_dir.join("database.sqlite");
-    let mut conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+    let mut conn = open_database(&app_handle)?;
 
     let old_text: String = conn.query_row("SELECT text FROM messages WHERE id = ?1", [&msg_id], |row| row.get(0)).unwrap_or_default();
     let timestamp = chrono::Local::now().to_rfc3339();
@@ -257,9 +163,7 @@ pub fn edit_message(app_handle: tauri::AppHandle, msg_id: String, new_text: Stri
 
 #[tauri::command]
 pub fn delete_message(app_handle: tauri::AppHandle, msg_id: String) -> Result<(), String> {
-    let app_data_dir = app_handle.path().app_data_dir().unwrap();
-    let db_path = app_data_dir.join("database.sqlite");
-    let mut conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+    let mut conn = open_database(&app_handle)?;
 
     let original_text: String = conn.query_row("SELECT original_text FROM messages WHERE id = ?1", [&msg_id], |row| row.get(0)).unwrap_or_default();
     let timestamp = chrono::Local::now().to_rfc3339();
@@ -282,9 +186,7 @@ pub fn delete_message(app_handle: tauri::AppHandle, msg_id: String) -> Result<()
 
 #[tauri::command]
 pub fn restore_message(app_handle: tauri::AppHandle, msg_id: String) -> Result<(), String> {
-    let app_data_dir = app_handle.path().app_data_dir().unwrap();
-    let db_path = app_data_dir.join("database.sqlite");
-    let mut conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+    let mut conn = open_database(&app_handle)?;
 
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     tx.execute(
@@ -297,26 +199,12 @@ pub fn restore_message(app_handle: tauri::AppHandle, msg_id: String) -> Result<(
         [&msg_id],
     ).map_err(|e| e.to_string())?;
     
-    let _ = tx.execute("DELETE FROM edits WHERE message_id = ?1", [&msg_id]);
+    tx.execute("DELETE FROM edits WHERE message_id = ?1", [&msg_id])
+        .map_err(|e| e.to_string())?;
 
     tx.commit().map_err(|e| e.to_string())?;
 
     Ok(())
-}
-
-#[tauri::command]
-pub fn get_message_count(app_handle: tauri::AppHandle, chat_id: String) -> Result<i64, String> {
-    let app_data_dir = app_handle.path().app_data_dir().unwrap();
-    let db_path = app_data_dir.join("database.sqlite");
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
-
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM messages WHERE chat_id = ?1",
-        [&chat_id],
-        |row| row.get(0),
-    ).map_err(|e| e.to_string())?;
-
-    Ok(count)
 }
 
 #[derive(Serialize)]
@@ -332,9 +220,7 @@ pub struct ChatStats {
 
 #[tauri::command]
 pub fn get_chat_stats(app_handle: tauri::AppHandle, chat_id: String) -> Result<ChatStats, String> {
-    let app_data_dir = app_handle.path().app_data_dir().unwrap();
-    let db_path = app_data_dir.join("database.sqlite");
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+    let conn = open_database(&app_handle)?;
 
     let mut stmt = conn.prepare(
         "SELECT msg_type, COUNT(*) FROM messages WHERE chat_id = ?1 GROUP BY msg_type"
@@ -357,19 +243,23 @@ pub fn get_chat_stats(app_handle: tauri::AppHandle, chat_id: String) -> Result<C
     }).map_err(|e| e.to_string())?;
 
     for row in rows {
-        if let Ok((msg_type, count)) = row {
-            stats.total += count;
-            match msg_type.as_str() {
-                "image" => stats.images += count,
-                "video" => stats.videos += count,
-                "audio" => stats.audios += count,
-                "document" => stats.documents += count,
-                "sticker" => stats.stickers += count,
-                "deleted" => stats.deleted += count,
-                _ => {}
-            }
+        let (msg_type, count) = row.map_err(|e| e.to_string())?;
+        stats.total += count;
+        match msg_type.as_str() {
+            "image" => stats.images += count,
+            "video" => stats.videos += count,
+            "audio" => stats.audios += count,
+            "document" => stats.documents += count,
+            "sticker" => stats.stickers += count,
+            _ => {}
         }
     }
+
+    stats.deleted = conn.query_row(
+        "SELECT COUNT(*) FROM messages WHERE chat_id = ?1 AND deleted = 1",
+        [&chat_id],
+        |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
 
     Ok(stats)
 }

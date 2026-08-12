@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -25,7 +25,6 @@ interface Message {
   original_text: string | null;
   media_path: string | null;
   media_filename: string | null;
-  media_mime_type: string | null;
   edited: boolean;
   deleted: boolean;
   system: boolean;
@@ -68,7 +67,8 @@ function formatDate(timestamp: string): string {
   if (!match) return timestamp;
   const day = parseInt(match[1]);
   const month = parseInt(match[2]);
-  const year = parseInt(match[3]);
+  const parsedYear = parseInt(match[3]);
+  const year = parsedYear < 100 ? parsedYear + 2000 : parsedYear;
   
   const today = new Date();
   const msgDate = new Date(year, month - 1, day);
@@ -106,6 +106,7 @@ function isMediaFile(path: string): "image" | "video" | "sticker" | "audio" | "d
 // ─── App Component ───────────────────────────────────────────────
 function App() {
   const [chats, setChats] = useState<Chat[]>([]);
+  const [chatQuery, setChatQuery] = useState("");
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -125,17 +126,22 @@ function App() {
   const [chatStats, setChatStats] = useState<ChatStats | null>(null);
   
   const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const filteredChats = chats.filter(chat =>
+    chat.name.toLocaleLowerCase("he").includes(chatQuery.trim().toLocaleLowerCase("he"))
+  );
+  const loadChatsEvent = useEffectEvent(loadChats);
+  const importZipEvent = useEffectEvent(handleImport);
 
   // ── Load & Listen ──
   useEffect(() => {
-    loadChats();
+    void loadChatsEvent();
 
     const unlistenDrop = listen<{ paths: string[] }>("tauri://drag-drop", async (event) => {
       const paths = event.payload.paths;
       if (paths && paths.length > 0) {
         for (const p of paths) {
-          if (p.endsWith(".zip")) {
-            await handleImport(p);
+          if (p.toLowerCase().endsWith(".zip")) {
+            await importZipEvent(p);
           }
         }
       }
@@ -180,7 +186,7 @@ function App() {
     if (virtuosoRef.current && messages.length > 0 && !searchOpen) {
       virtuosoRef.current.scrollToIndex({ index: messages.length - 1, align: 'end' });
     }
-  }, [messages]);
+  }, [messages.length, searchOpen]);
 
   // ── Search Navigation ──
   useEffect(() => {
@@ -209,7 +215,7 @@ function App() {
       const msgIndex = searchIndices[currentSearchIndex];
       virtuosoRef.current?.scrollToIndex({ index: msgIndex, align: 'center', behavior: 'smooth' });
     }
-  }, [currentSearchIndex]);
+  }, [currentSearchIndex, searchIndices]);
 
   // ── Handlers ──
   const scrollToTop = () => {
@@ -231,13 +237,16 @@ function App() {
     try {
       const newChatId = await invoke<string>("import_zip", { zipPath: path });
       setLoadingText("טוען שיחות...");
-      await loadChats();
+      const refreshedChats = await loadChats();
+      const importedChat = refreshedChats.find(chat => chat.id === newChatId);
+      if (importedChat) setActiveChat(importedChat);
       await loadMessages(newChatId);
     } catch (e) {
       alert("שגיאה בייבוא: " + e);
+    } finally {
+      setLoading(false);
+      setImportProgress(0);
     }
-    setLoading(false);
-    setImportProgress(0);
   }
 
   async function openDialog() {
@@ -245,9 +254,8 @@ function App() {
       multiple: false,
       filters: [{ name: "WhatsApp Export", extensions: ["zip"] }],
     });
-    if (selected) {
-      const path = typeof selected === "string" ? selected : (selected as any).path;
-      if (path) handleImport(path);
+    if (typeof selected === "string") {
+      await handleImport(selected);
     }
   }
 
@@ -260,19 +268,16 @@ function App() {
         setActiveChat(data[0]);
         loadMessages(data[0].id);
       }
+      return data;
     } catch (e) {
       console.error(e);
+      return [];
     }
   }
 
   async function loadMessages(chatId: string) {
     try {
-      let data: Message[];
-      if (searchQuery) {
-        data = await invoke<Message[]>("search_messages", { chatId, query: searchQuery });
-      } else {
-        data = await invoke<Message[]>("get_all_messages", { chatId });
-      }
+      const data = await invoke<Message[]>("get_all_messages", { chatId });
       setMessages(data);
       const stats = await invoke<ChatStats>("get_chat_stats", { chatId });
       setChatStats(stats);
@@ -300,6 +305,7 @@ function App() {
       setMessages(prev =>
         prev.map(m => m.id === msg.id ? { ...m, deleted: true } : m)
       );
+      setChatStats(prev => prev ? { ...prev, deleted: prev.deleted + 1 } : prev);
     } catch (e) {
       console.error(e);
     }
@@ -324,6 +330,7 @@ function App() {
       setMessages(prev =>
         prev.map(m => m.id === msg.id ? { ...m, deleted: false, text: m.original_text, edited: false } : m)
       );
+      setChatStats(prev => prev ? { ...prev, deleted: Math.max(0, prev.deleted - 1) } : prev);
     } catch (e) {
       console.error(e);
     }
@@ -428,11 +435,13 @@ function App() {
         <div className="sidebar-search">
           <input
             placeholder="חיפוש שיחה..."
-            onChange={() => {/* sidebar search filter */}}
+            value={chatQuery}
+            onChange={event => setChatQuery(event.target.value)}
+            aria-label="חיפוש שיחה"
           />
         </div>
         <div className="chat-list">
-          {chats.map(chat => (
+          {filteredChats.map(chat => (
             <div
               key={chat.id}
               className={`chat-item ${activeChat?.id === chat.id ? "active" : ""}`}
@@ -457,6 +466,11 @@ function App() {
               <div style={{ fontSize: 48, marginBottom: 12 }}>📱</div>
               <p>אין שיחות עדיין</p>
               <p style={{ fontSize: 13, marginTop: 4 }}>ייבא קובץ ZIP של WhatsApp</p>
+            </div>
+          )}
+          {chats.length > 0 && filteredChats.length === 0 && (
+            <div style={{ padding: 32, textAlign: 'center', color: '#667781' }}>
+              לא נמצאו שיחות
             </div>
           )}
         </div>
@@ -561,7 +575,7 @@ function App() {
               <Virtuoso
                 ref={virtuosoRef}
                 data={messages}
-                initialTopMostItemIndex={messages.length - 1}
+                initialTopMostItemIndex={Math.max(0, messages.length - 1)}
                 itemContent={(i, msg) => {
                   const prevMsg = i > 0 ? messages[i - 1] : null;
                   const prevDateKey = prevMsg ? getDateKey(prevMsg.timestamp) : null;
@@ -717,6 +731,10 @@ function App() {
                 <div className="chat-info-item">
                   <div className="chat-info-label">מסמכים</div>
                   <div className="chat-info-value">{chatStats.documents.toLocaleString()}</div>
+                </div>
+                <div className="chat-info-item">
+                  <div className="chat-info-label">מדבקות</div>
+                  <div className="chat-info-value">{chatStats.stickers.toLocaleString()}</div>
                 </div>
                 <div className="chat-info-item">
                   <div className="chat-info-label">הודעות שנמחקו</div>

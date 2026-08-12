@@ -1,8 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
-
-// Cache to avoid re-reading same file multiple times
-const mediaCache = new Map<string, string>();
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { useState } from "react";
 
 interface MediaProps {
   path: string;
@@ -12,56 +9,10 @@ interface MediaProps {
 }
 
 export function MediaDisplay({ path, type, className, onClick }: MediaProps) {
-  const [src, setSrc] = useState<string | null>(null);
-  const [error, setError] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [failedPath, setFailedPath] = useState<string | null>(null);
+  const src = convertFileSrc(path);
 
-  useEffect(() => {
-    let cancelled = false;
-    setError(false);
-    setLoading(true);
-    setSrc(null);
-
-    // Check cache first
-    if (mediaCache.has(path)) {
-      setSrc(mediaCache.get(path)!);
-      setLoading(false);
-      return;
-    }
-
-    invoke<string>("read_media_as_base64", { path })
-      .then((dataUrl) => {
-        if (!cancelled) {
-          mediaCache.set(path, dataUrl);
-          setSrc(dataUrl);
-          setLoading(false);
-        }
-      })
-      .catch((e) => {
-        console.warn("Failed to load media:", path, e);
-        if (!cancelled) {
-          setError(true);
-          setLoading(false);
-        }
-      });
-
-    return () => { cancelled = true; };
-  }, [path]);
-
-  if (loading) {
-    return (
-      <div style={{
-        width: 200, height: 150, borderRadius: 8,
-        background: "rgba(0,0,0,0.06)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 24, color: "rgba(0,0,0,0.2)"
-      }}>
-        ⏳
-      </div>
-    );
-  }
-
-  if (error || !src) {
+  if (failedPath === path) {
     return (
       <div style={{
         padding: "8px 12px", borderRadius: 8,
@@ -88,6 +39,8 @@ export function MediaDisplay({ path, type, className, onClick }: MediaProps) {
           cursor: onClick ? "pointer" : "default",
         }}
         alt=""
+        loading="lazy"
+        onError={() => setFailedPath(path)}
         onClick={() => onClick?.(src)}
       />
     );
@@ -99,21 +52,19 @@ export function MediaDisplay({ path, type, className, onClick }: MediaProps) {
         src={src}
         controls
         preload="metadata"
+        onError={() => setFailedPath(path)}
         style={{ display: "block", maxWidth: "100%", maxHeight: 330, borderRadius: 6 }}
       />
     );
   }
 
-  if (type === "audio") {
-    return (
-      <audio
-        src={src}
-        controls
-        preload="metadata"
-        style={{ width: "100%", maxWidth: 280 }}
-      />
-    );
-  }
-
-  return null;
+  return (
+    <audio
+      src={src}
+      controls
+      preload="metadata"
+      onError={() => setFailedPath(path)}
+      style={{ width: "100%", maxWidth: 280 }}
+    />
+  );
 }

@@ -1,32 +1,57 @@
-# React + TypeScript + Vite
+# WhatsApp Export Viewer
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A private desktop app for reading exported WhatsApp chats on macOS. Import a WhatsApp `.zip` export, browse messages and media, search locally, and make reversible local edits without changing the original archive.
 
-Currently, two official plugins are available:
+> This is an independent project and is not affiliated with or endorsed by WhatsApp or Meta.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Privacy and offline use
 
-## React Compiler
+- The packaged app works fully offline.
+- Chat data and extracted media stay in the app's local data directory.
+- There are no analytics, telemetry, cloud sync, remote fonts, or remote images.
+- The production Content Security Policy blocks external network connections.
+- ZIP entries are validated before extraction, and media access is restricted to the app's imports directory.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Features
 
-## Expanding the Oxlint configuration
+- Import WhatsApp `.zip` exports by file picker or drag and drop.
+- Parse Android and iOS text export formats, including multiline and system messages.
+- Display images, stickers, videos, audio, and document attachments.
+- Search messages and filter imported chats.
+- Rename chats and locally edit, delete, or restore messages.
+- Render large conversations efficiently with a virtualized message list.
+- Hebrew RTL interface with light and dark appearance support.
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+## Development
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+Requirements: Node.js, npm, Rust, and the platform prerequisites for Tauri 2.
+
+```bash
+npm install
+npm run tauri dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Useful checks:
+
+```bash
+npm run lint
+npm run build
+cargo check --manifest-path src-tauri/Cargo.toml --locked
+```
+
+Create the macOS app and DMG:
+
+```bash
+npm run tauri build
+```
+
+## Project structure
+
+```text
+src/                    React and TypeScript interface
+src-tauri/src/          Rust importer, database, and Tauri commands
+src-tauri/capabilities/ Minimal desktop permissions
+public/                 Bundled local static assets
+```
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for implementation details.

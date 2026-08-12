@@ -1,13 +1,6 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500;600;700&display=swap');
-
 :root {
   /* Colors */
   --wa-teal: #008069;
-  --wa-teal-light: #00a884;
   --wa-green: #25D366;
   --wa-bg-app: #d1d7db;
   
@@ -16,6 +9,8 @@
   --wa-bg-sidebar-hover: #f5f6f6;
   --wa-bg-sidebar-active: #f0f2f5;
   --wa-sidebar-header: #f0f2f5;
+  --wa-bg-header: #f0f2f5;
+  --wa-bg-panel: #f0f2f5;
   
   /* Chat Area */
   --wa-bg-chat: #efeae2;
@@ -29,12 +24,18 @@
   --wa-text-primary: #111b21;
   --wa-text-secondary: #667781;
   --wa-text-meta: #667781;
+  --wa-text: #111b21;
+  --wa-overlay: rgba(255,255,255,0.9);
   
   /* Borders */
   --wa-border: #e9edef;
   
-  /* Background Pattern */
-  --wa-chat-pattern: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png');
+  /* Local-only pattern: no remote image request is needed. */
+  --wa-chat-pattern:
+    radial-gradient(circle at 12px 12px, rgba(11,20,26,0.055) 1.5px, transparent 1.7px),
+    radial-gradient(circle at 34px 30px, rgba(11,20,26,0.04) 1px, transparent 1.2px),
+    linear-gradient(35deg, transparent 46%, rgba(11,20,26,0.025) 47%, rgba(11,20,26,0.025) 49%, transparent 50%);
+  --wa-chat-pattern-size: 48px 48px, 48px 48px, 72px 72px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -44,6 +45,8 @@
     --wa-bg-sidebar-hover: #202c33;
     --wa-bg-sidebar-active: #2a3942;
     --wa-sidebar-header: #202c33;
+    --wa-bg-header: #202c33;
+    --wa-bg-panel: #2a3942;
     --wa-bg-chat: #0b141a;
     --wa-bg-chat-header: #202c33;
     --wa-bg-incoming: #202c33;
@@ -53,8 +56,13 @@
     --wa-text-primary: #e9edef;
     --wa-text-secondary: #8696a0;
     --wa-text-meta: #8696a0;
+    --wa-text: #e9edef;
+    --wa-overlay: rgba(17,27,33,0.94);
     --wa-border: #222e35;
-    --wa-chat-pattern: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); /* The pattern handles opacity usually, or we can use a darker one */
+    --wa-chat-pattern:
+      radial-gradient(circle at 12px 12px, rgba(233,237,239,0.045) 1.5px, transparent 1.7px),
+      radial-gradient(circle at 34px 30px, rgba(233,237,239,0.035) 1px, transparent 1.2px),
+      linear-gradient(35deg, transparent 46%, rgba(233,237,239,0.02) 47%, rgba(233,237,239,0.02) 49%, transparent 50%);
   }
 }
 
@@ -68,7 +76,7 @@ html, body, #root {
   height: 100%;
   width: 100%;
   overflow: hidden;
-  font-family: 'Rubik', 'Segoe UI', Helvetica, Arial, sans-serif;
+  font-family: "Avenir Next", "Noto Sans Hebrew", "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -213,29 +221,7 @@ body {
   text-overflow: ellipsis;
 }
 
-.chat-badge {
-  background: var(--wa-green);
-  color: white;
-  font-size: 11px;
-  font-weight: 600;
-  min-width: 20px;
-  height: 20px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 6px;
-}
-
 /* ============ MAIN CHAT ============ */
-.main-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  background: var(--wa-bg-chat);
-  position: relative;
-}
-
 .chat-info-panel {
   width: 300px;
   background: var(--wa-bg-sidebar);
@@ -351,14 +337,9 @@ body {
   padding: 12px 60px;
   background-color: var(--wa-bg-chat);
   background-image: var(--wa-chat-pattern);
+  background-size: var(--wa-chat-pattern-size);
   background-repeat: repeat;
   position: relative;
-}
-
-@media (prefers-color-scheme: dark) {
-  .messages-container {
-    opacity: 0.9; /* Slightly dim the background pattern in dark mode */
-  }
 }
 
 /* ============ SCROLL BUTTONS ============ */
@@ -568,34 +549,6 @@ body {
   max-width: 330px;
 }
 
-.media-image {
-  display: block;
-  max-width: 100%;
-  max-height: 330px;
-  border-radius: 6px;
-  cursor: pointer;
-  object-fit: cover;
-  transition: opacity 0.2s ease;
-}
-
-.media-image:hover {
-  opacity: 0.92;
-}
-
-.media-video {
-  display: block;
-  max-width: 100%;
-  max-height: 330px;
-  border-radius: 6px;
-  outline: none;
-}
-
-.media-sticker {
-  display: block;
-  max-width: 160px;
-  max-height: 160px;
-}
-
 .media-document {
   display: flex;
   align-items: center;
@@ -711,50 +664,15 @@ body {
   transform: none;
 }
 
-/* ============ DRAG OVERLAY ============ */
-.drag-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,128,105,0.15);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-  pointer-events: none;
-  animation: fadeIn 0.2s ease;
-}
-
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
-.drag-overlay-inner {
-  background: white;
-  padding: 40px 60px;
-  border-radius: 16px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
-  text-align: center;
-}
-
-.drag-overlay-inner h2 {
-  font-size: 22px;
-  font-weight: 500;
-  color: var(--wa-teal);
-  margin-top: 12px;
-}
-
-.drag-overlay-inner p {
-  font-size: 14px;
-  color: var(--wa-text-secondary);
-  margin-top: 8px;
-}
-
 /* ============ CONTEXT MENU ============ */
 .context-menu {
   position: fixed;
-  background: white;
+  background: var(--wa-bg-incoming);
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.15);
   min-width: 180px;
@@ -781,7 +699,7 @@ body {
 }
 
 .context-menu-item:hover {
-  background: #f5f6f6;
+  background: var(--wa-bg-sidebar-hover);
 }
 
 .context-menu-item.danger {
@@ -800,7 +718,7 @@ body {
   top: 60px;
   left: 0;
   right: 0;
-  background: white;
+  background: var(--wa-bg-incoming);
   padding: 12px 16px;
   border-bottom: 1px solid var(--wa-border);
   z-index: 20;
@@ -820,7 +738,8 @@ body {
   padding: 8px 12px;
   border: none;
   border-radius: 8px;
-  background: #f0f2f5;
+  background: var(--wa-bg-panel);
+  color: var(--wa-text-primary);
   font-size: 14px;
   font-family: inherit;
   outline: none;
@@ -829,31 +748,6 @@ body {
 
 .search-panel input:focus {
   box-shadow: 0 0 0 2px var(--wa-green);
-}
-
-.search-results-count {
-  font-size: 13px;
-  color: var(--wa-text-secondary);
-  white-space: nowrap;
-}
-
-.search-nav-btn {
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--wa-text-secondary);
-  font-size: 16px;
-  transition: background 0.15s ease;
-}
-
-.search-nav-btn:hover {
-  background: #f0f2f5;
 }
 
 .search-close-btn {
@@ -872,7 +766,7 @@ body {
 }
 
 .search-close-btn:hover {
-  background: #f0f2f5;
+  background: var(--wa-bg-panel);
 }
 
 /* ============ EDIT MODAL ============ */
@@ -888,13 +782,14 @@ body {
 }
 
 .edit-modal {
-  background: white;
+  background: var(--wa-bg-incoming);
   border-radius: 12px;
   padding: 24px;
   width: 450px;
   max-width: 90vw;
   box-shadow: 0 8px 32px rgba(0,0,0,0.2);
   direction: rtl;
+  color: var(--wa-text-primary);
 }
 
 .edit-modal h3 {
@@ -914,6 +809,8 @@ body {
   resize: vertical;
   outline: none;
   direction: rtl;
+  background: var(--wa-bg-panel);
+  color: var(--wa-text-primary);
 }
 
 .edit-modal textarea:focus {
@@ -947,7 +844,7 @@ body {
 }
 
 .edit-btn-cancel {
-  background: #f0f2f5;
+  background: var(--wa-bg-panel);
   color: var(--wa-text);
 }
 
@@ -959,7 +856,7 @@ body {
 .loading-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(255,255,255,0.9);
+  background: var(--wa-overlay);
   display: flex;
   flex-direction: column;
   align-items: center;

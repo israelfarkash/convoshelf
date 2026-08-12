@@ -1,18 +1,46 @@
+use crate::storage;
+use chrono::Utc;
+use regex::Regex;
 use rusqlite::Connection;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufReader, BufRead, Read};
-use std::path::Path;
-use tauri::{Manager, Emitter};
-use regex::Regex;
+use std::io::{BufRead, BufReader};
+use std::path::{Path, PathBuf};
+use tauri::Emitter;
 use uuid::Uuid;
-use chrono::Utc;
 use zip::ZipArchive;
+
+const MAX_ARCHIVE_FILES: usize = 50_000;
+const MAX_EXTRACTED_BYTES: u64 = 20 * 1024 * 1024 * 1024;
 
 #[derive(Clone, Serialize)]
 struct ProgressPayload {
     step: String,
     progress: f32,
+}
+
+struct ImportCleanup {
+    path: PathBuf,
+    keep: bool,
+}
+
+impl ImportCleanup {
+    fn new(path: PathBuf) -> Self {
+        Self { path, keep: false }
+    }
+
+    fn keep(&mut self) {
+        self.keep = true;
+    }
+}
+
+impl Drop for ImportCleanup {
+    fn drop(&mut self) {
+        if !self.keep {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
 }
 
 fn get_media_type_from_filename(filename: &str) -> String {
@@ -53,23 +81,41 @@ fn is_system_message(sender_candidate: &str) -> bool {
 pub fn import_zip(app_handle: tauri::AppHandle, zip_path: String) -> Result<String, String> {
     let _ = app_handle.emit("import-progress", ProgressPayload { step: "Extracting files...".into(), progress: 10.0 });
     
-    let app_data_dir = app_handle.path().app_data_dir().unwrap();
+    let app_data_dir = storage::app_data_dir(&app_handle)?;
     let import_id = Uuid::new_v4().to_string();
     let extract_dir = app_data_dir.join("imports").join(&import_id);
     
     std::fs::create_dir_all(&extract_dir).map_err(|e| e.to_string())?;
+    let mut cleanup = ImportCleanup::new(extract_dir.clone());
 
     let file = File::open(&zip_path).map_err(|e| format!("Failed to open zip: {}", e))?;
     let mut archive = ZipArchive::new(file).map_err(|e| format!("Failed to read zip: {}", e))?;
 
-    let mut chat_txt_path = None;
-    let mut chat_txt_name = String::new();
+    if archive.len() > MAX_ARCHIVE_FILES {
+        return Err(format!("ZIP contains too many files (maximum {})", MAX_ARCHIVE_FILES));
+    }
+
+    let mut chat_txt_candidates = Vec::new();
+    let mut extracted_files = HashMap::new();
     
     let total_files = archive.len();
+    let mut extracted_bytes = 0_u64;
 
     for i in 0..total_files {
-        let mut file = archive.by_index(i).unwrap();
-        let outpath = extract_dir.join(file.name());
+        let mut file = archive.by_index(i).map_err(|e| format!("Failed to read ZIP entry: {}", e))?;
+        let relative_path = file.enclosed_name()
+            .ok_or_else(|| format!("Unsafe path in ZIP: {}", file.name()))?
+            .to_owned();
+
+        if relative_path.starts_with("__MACOSX") || relative_path.file_name().is_some_and(|name| name == ".DS_Store") {
+            continue;
+        }
+
+        extracted_bytes = extracted_bytes.checked_add(file.size())
+            .ok_or("ZIP extracted size is too large")?;
+        if extracted_bytes > MAX_EXTRACTED_BYTES {
+            return Err("ZIP extracted size exceeds the 20 GB safety limit".into());
+        }
 
         if i % 50 == 0 {
             let _ = app_handle.emit("import-progress", ProgressPayload { 
@@ -77,38 +123,50 @@ pub fn import_zip(app_handle: tauri::AppHandle, zip_path: String) -> Result<Stri
                 progress: 10.0 + (i as f32 / total_files as f32) * 20.0 
             });
         }
-        let outpath = extract_dir.join(file.name());
+        let outpath = extract_dir.join(relative_path);
 
-        if (*file.name()).ends_with('/') {
-            std::fs::create_dir_all(&outpath).unwrap();
+        if file.is_dir() {
+            std::fs::create_dir_all(&outpath).map_err(|e| format!("Failed to create directory: {}", e))?;
         } else {
             if let Some(p) = outpath.parent() {
-                if !p.exists() {
-                    std::fs::create_dir_all(&p).unwrap();
-                }
+                std::fs::create_dir_all(p).map_err(|e| format!("Failed to create directory: {}", e))?;
             }
-            let mut outfile = File::create(&outpath).unwrap();
-            std::io::copy(&mut file, &mut outfile).unwrap();
+            let mut outfile = File::create(&outpath).map_err(|e| format!("Failed to create extracted file: {}", e))?;
+            std::io::copy(&mut file, &mut outfile).map_err(|e| format!("Failed to extract file: {}", e))?;
 
-            if file.name().ends_with(".txt") {
-                chat_txt_path = Some(outpath.clone());
-                if let Some(stem) = outpath.file_stem() {
-                    chat_txt_name = stem.to_string_lossy().to_string();
-                }
+            if let Some(filename) = outpath.file_name().and_then(|name| name.to_str()) {
+                extracted_files.entry(filename.to_string()).or_insert_with(|| outpath.clone());
+            }
+
+            if file.name().to_lowercase().ends_with(".txt") {
+                let stem = outpath.file_stem()
+                    .map(|value| value.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                chat_txt_candidates.push((outpath.clone(), stem, file.size()));
             }
         }
     }
 
-    let chat_txt_path = chat_txt_path.ok_or("No .txt file found in ZIP")?;
+    let (chat_txt_path, chat_txt_name, _) = chat_txt_candidates
+        .into_iter()
+        .max_by_key(|(_, name, size)| {
+            let lower = name.to_lowercase();
+            (lower == "_chat" || lower.starts_with("whatsapp chat"), *size)
+        })
+        .ok_or("No .txt file found in ZIP")?;
 
     let db_path = app_data_dir.join("database.sqlite");
     let mut conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
     let mut chat_name = chat_txt_name;
-    if chat_name.starts_with("WhatsApp Chat with ") {
-        chat_name = chat_name.replace("WhatsApp Chat with ", "");
-    } else if chat_name.is_empty() {
-        chat_name = Path::new(&zip_path).file_stem().unwrap().to_string_lossy().to_string();
+    if let Some(name) = chat_name.strip_prefix("WhatsApp Chat with ") {
+        chat_name = name.to_string();
+    } else if chat_name.is_empty() || chat_name.eq_ignore_ascii_case("_chat") {
+        chat_name = Path::new(&zip_path)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("WhatsApp Chat")
+            .to_string();
     }
     
     let tx = conn.transaction().map_err(|e| e.to_string())?;
@@ -121,16 +179,18 @@ pub fn import_zip(app_handle: tauri::AppHandle, zip_path: String) -> Result<Stri
     let file = File::open(chat_txt_path).map_err(|e| e.to_string())?;
     let reader = BufReader::new(file);
 
-    let re_bracket = Regex::new(r"^\[(\d{1,2}[./]\d{1,2}[./]\d{2,4},\s*\d{1,2}:\d{2}(?::\d{2})?)\]\s+(.*)$").unwrap();
-    let re_dash = Regex::new(r"^(\d{1,2}[./]\d{1,2}[./]\d{2,4},\s*\d{1,2}:\d{2}(?::\d{2})?)\s+-\s+(.*)$").unwrap();
-    let re_sender = Regex::new(r"^(?:~\s*)?([^:]+):\s?(.*)$").unwrap();
+    let re_bracket = Regex::new(r"^\[(\d{1,2}[./]\d{1,2}[./]\d{2,4},\s*\d{1,2}:\d{2}(?::\d{2})?)\]\s+(.*)$")
+        .map_err(|e| e.to_string())?;
+    let re_dash = Regex::new(r"^(\d{1,2}[./]\d{1,2}[./]\d{2,4},\s*\d{1,2}:\d{2}(?::\d{2})?)\s+-\s+(.*)$")
+        .map_err(|e| e.to_string())?;
+    let re_sender = Regex::new(r"^(?:~\s*)?([^:]+):\s?(.*)$").map_err(|e| e.to_string())?;
 
     let mut current_msg_id = String::new();
     let mut current_text = String::new();
     let mut msg_count = 0;
 
     for line in reader.lines() {
-        let raw = line.unwrap_or_default();
+        let raw = line.map_err(|e| format!("Failed reading chat text: {}", e))?;
         let line: String = raw.chars()
             .filter(|c| !matches!(*c as u32,
                 0x200F | 0x200E | 0x202A | 0x202B | 0x202C | 0x202D | 0x202E |
@@ -174,11 +234,15 @@ pub fn import_zip(app_handle: tauri::AppHandle, zip_path: String) -> Result<Stri
         let mut matched_rest: Option<String> = None;
 
         if let Some(caps) = re_bracket.captures(&line) {
-            matched_timestamp = Some(caps.get(1).unwrap().as_str().to_string());
-            matched_rest = Some(caps.get(2).unwrap().as_str().to_string());
+            if let (Some(timestamp), Some(rest)) = (caps.get(1), caps.get(2)) {
+                matched_timestamp = Some(timestamp.as_str().to_string());
+                matched_rest = Some(rest.as_str().to_string());
+            }
         } else if let Some(caps) = re_dash.captures(&line) {
-            matched_timestamp = Some(caps.get(1).unwrap().as_str().to_string());
-            matched_rest = Some(caps.get(2).unwrap().as_str().to_string());
+            if let (Some(timestamp), Some(rest)) = (caps.get(1), caps.get(2)) {
+                matched_timestamp = Some(timestamp.as_str().to_string());
+                matched_rest = Some(rest.as_str().to_string());
+            }
         }
 
         if let (Some(timestamp), Some(rest)) = (matched_timestamp, matched_rest) {
@@ -187,13 +251,13 @@ pub fn import_zip(app_handle: tauri::AppHandle, zip_path: String) -> Result<Stri
             let mut text = rest.clone();
 
             if let Some(sender_caps) = re_sender.captures(&rest) {
-                let candidate_sender = sender_caps.get(1).unwrap().as_str().trim();
-                let candidate_text = sender_caps.get(2).unwrap().as_str().to_string();
-
-                if !is_system_message(candidate_sender) {
-                    is_system = false;
-                    sender = candidate_sender.to_string();
-                    text = candidate_text;
+                if let (Some(candidate_sender), Some(candidate_text)) = (sender_caps.get(1), sender_caps.get(2)) {
+                    let candidate_sender = candidate_sender.as_str().trim();
+                    if !is_system_message(candidate_sender) {
+                        is_system = false;
+                        sender = candidate_sender.to_string();
+                        text = candidate_text.as_str().to_string();
+                    }
                 }
             }
 
@@ -221,7 +285,15 @@ pub fn import_zip(app_handle: tauri::AppHandle, zip_path: String) -> Result<Stri
                     msg_type = "media_omitted".to_string();
                 } else if let Some(filename) = find_attachment(&text) {
                     msg_type = get_media_type_from_filename(&filename);
-                    media_path = Some(extract_dir.join(&filename).to_string_lossy().to_string());
+                    let safe_filename = Path::new(&filename)
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .ok_or("Invalid media filename")?;
+                    if let Some(path) = extracted_files.get(safe_filename) {
+                        media_path = Some(path.to_string_lossy().to_string());
+                    } else {
+                        msg_type = "media_omitted".to_string();
+                    }
                     let cleaned = text
                         .replace(&format!("<attached: {}>", filename), "")
                         .replace(&format!("<\u{05de}\u{05e6}\u{05d5}\u{05e8}\u{05e3}: {}>", filename), "")
@@ -290,66 +362,6 @@ pub fn import_zip(app_handle: tauri::AppHandle, zip_path: String) -> Result<Stri
 
     let _ = app_handle.emit("import-progress", ProgressPayload { step: "Finalizing...".into(), progress: 100.0 });
 
+    cleanup.keep();
     Ok(import_id)
-}
-
-/// Reads a local file and returns it as a base64-encoded data URL.
-/// This is the most reliable way to display local media in Tauri 2 WebView.
-#[tauri::command]
-pub fn read_media_as_base64(path: String) -> Result<String, String> {
-    let mut file = File::open(&path).map_err(|e| format!("Cannot open file {}: {}", path, e))?;
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
-
-    let b64 = base64_encode(&bytes);
-
-    // Determine MIME type from extension
-    let lower = path.to_lowercase();
-    let mime = if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
-        "image/jpeg"
-    } else if lower.ends_with(".png") {
-        "image/png"
-    } else if lower.ends_with(".webp") {
-        "image/webp"
-    } else if lower.ends_with(".gif") {
-        "image/gif"
-    } else if lower.ends_with(".mp4") {
-        "video/mp4"
-    } else if lower.ends_with(".mov") {
-        "video/quicktime"
-    } else if lower.ends_with(".mp3") {
-        "audio/mpeg"
-    } else if lower.ends_with(".m4a") {
-        "audio/mp4"
-    } else if lower.ends_with(".ogg") || lower.ends_with(".opus") {
-        "audio/ogg"
-    } else {
-        "application/octet-stream"
-    };
-
-    Ok(format!("data:{};base64,{}", mime, b64))
-}
-
-/// Simple base64 encoder without external deps
-fn base64_encode(input: &[u8]) -> String {
-    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
-    for chunk in input.chunks(3) {
-        let b0 = chunk[0] as usize;
-        let b1 = if chunk.len() > 1 { chunk[1] as usize } else { 0 };
-        let b2 = if chunk.len() > 2 { chunk[2] as usize } else { 0 };
-        out.push(CHARS[b0 >> 2] as char);
-        out.push(CHARS[((b0 & 3) << 4) | (b1 >> 4)] as char);
-        if chunk.len() > 1 {
-            out.push(CHARS[((b1 & 0xf) << 2) | (b2 >> 6)] as char);
-        } else {
-            out.push('=');
-        }
-        if chunk.len() > 2 {
-            out.push(CHARS[b2 & 0x3f] as char);
-        } else {
-            out.push('=');
-        }
-    }
-    out
 }
