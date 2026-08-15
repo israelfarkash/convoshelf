@@ -1,37 +1,46 @@
-# WhatsApp Export Viewer
+# מציג ייצוא WhatsApp
 
-A private desktop app for reading exported WhatsApp chats on macOS. Import a WhatsApp `.zip` export, browse messages and media, search locally, and make reversible local edits without changing the original archive.
+אפליקציית שולחן עבודה פרטית להצגת שיחות שיוצאו מ־WhatsApp. אפשר לייבא קובץ ZIP, לעיין בהודעות ובמדיה, לחפש בשיחה ולבצע עריכות מקומיות והפיכות, בלי לשנות את קובץ הייצוא המקורי.
 
-> This is an independent project and is not affiliated with or endorsed by WhatsApp or Meta.
+> זהו פרויקט עצמאי שאינו קשור ל־WhatsApp או ל־Meta ואינו מאושר על ידיהן.
 
-## Privacy and offline use
+## פרטיות ועבודה ללא אינטרנט
 
-- The packaged app works fully offline.
-- Chat data and extracted media stay in the app's local data directory.
-- There are no analytics, telemetry, cloud sync, remote fonts, or remote images.
-- The production Content Security Policy blocks external network connections.
-- ZIP entries are validated before extraction, and media access is restricted to the app's imports directory.
+- האפליקציה המותקנת פועלת באופן מלא ללא חיבור לאינטרנט.
+- השיחות והמדיה נשמרות רק בתיקיית הנתונים המקומית של האפליקציה.
+- אין ניתוח שימוש, מעקב, סנכרון לענן, פונטים מרוחקים או תמונות מרוחקות.
+- מדיניות האבטחה של גרסת הייצור חוסמת חיבור לשירותים חיצוניים.
+- נתיבי קובצי ZIP נבדקים לפני החילוץ, והגישה למדיה מוגבלת לתיקיית הייבוא המקומית.
 
-## Features
+## יכולות
 
-- Import WhatsApp `.zip` exports by file picker or drag and drop.
-- Parse Android and iOS text export formats, including multiline and system messages.
-- Display images, stickers, videos, audio, and document attachments.
-- Search messages and filter imported chats.
-- Rename chats and locally edit, delete, or restore messages.
-- Render large conversations efficiently with a virtualized message list.
-- Hebrew RTL interface with light and dark appearance support.
+- ייבוא קובצי ZIP שיוצאו מ־WhatsApp באמצעות חלון בחירת קובץ או גרירה.
+- תמיכה בפורמטים של ייצוא מ־Android ומ־iPhone, כולל הודעות מרובות שורות והודעות מערכת.
+- הצגת תמונות, מדבקות, סרטונים, הקלטות קוליות ומסמכים.
+- תמיכה בהקלטות `MP3`,‏ `M4A`,‏ `OGG` ו־`OPUS` באמצעות נגן מובנה.
+- חיפוש בהודעות וסינון רשימת השיחות.
+- שינוי שם שיחה ועריכה, מחיקה או שחזור מקומיים של הודעות.
+- תצוגה יעילה של שיחות גדולות באמצעות רשימה וירטואלית.
+- ממשק עברי מלא מימין לשמאל, עם מצב בהיר וכהה.
 
-## Development
+## התחלה מהירה
 
-Requirements: Node.js, npm, Rust, and the platform prerequisites for Tauri 2.
+1. מייצאים שיחה מ־WhatsApp כקובץ ZIP. כדי לקבל תמונות והקלטות קוליות יש לבחור ייצוא **עם מדיה**.
+2. פותחים את האפליקציה ולוחצים על **בחר קובץ ZIP**, או גוררים את הקובץ לחלון.
+3. לאחר הייבוא בוחרים שיחה מהרשימה ומתחילים לעיין בה.
+
+להסברים מלאים ראו [מדריך שימוש בעברית](GUIDE_HE.md).
+
+## פיתוח
+
+דרישות: Node.js,‏ npm,‏ Rust ודרישות המערכת של Tauri 2.
 
 ```bash
 npm install
 npm run tauri dev
 ```
 
-Useful checks:
+בדיקות שימושיות:
 
 ```bash
 npm run lint
@@ -39,19 +48,19 @@ npm run build
 cargo check --manifest-path src-tauri/Cargo.toml --locked
 ```
 
-Create the macOS app and DMG:
+יצירת אפליקציית macOS וקובץ DMG:
 
 ```bash
 npm run tauri build
 ```
 
-## Project structure
+## מבנה הפרויקט
 
 ```text
-src/                    React and TypeScript interface
-src-tauri/src/          Rust importer, database, and Tauri commands
-src-tauri/capabilities/ Minimal desktop permissions
-public/                 Bundled local static assets
+src/                    ממשק React ו-TypeScript
+src-tauri/src/          ייבוא, מסד נתונים ופקודות Tauri ב-Rust
+src-tauri/capabilities/ הרשאות שולחן עבודה מצומצמות
+public/                 משאבים מקומיים המצורפים לאפליקציה
 ```
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for implementation details.
+לפרטים טכניים ראו [מסמך הארכיטקטורה](ARCHITECTURE.md).

@@ -252,7 +252,7 @@ function App() {
   async function openDialog() {
     const selected = await open({
       multiple: false,
-      filters: [{ name: "WhatsApp Export", extensions: ["zip"] }],
+      filters: [{ name: "ייצוא שיחת WhatsApp", extensions: ["zip"] }],
     });
     if (typeof selected === "string") {
       await handleImport(selected);
@@ -283,6 +283,7 @@ function App() {
       setChatStats(stats);
     } catch (e) {
       console.error(e);
+      alert("לא ניתן לטעון את הודעות השיחה.");
     }
   }
 
@@ -295,6 +296,7 @@ function App() {
       );
     } catch (e) {
       console.error(e);
+      alert("לא ניתן לערוך את ההודעה.");
     }
     setEditingMsg(null);
   }
@@ -308,6 +310,7 @@ function App() {
       setChatStats(prev => prev ? { ...prev, deleted: prev.deleted + 1 } : prev);
     } catch (e) {
       console.error(e);
+      alert("לא ניתן למחוק את ההודעה.");
     }
   }
 
@@ -320,6 +323,7 @@ function App() {
       setActiveChat(prev => prev ? { ...prev, name } : null);
     } catch (e) {
       console.error(e);
+      alert("לא ניתן לשנות את שם השיחה.");
     }
     setEditingChatName(false);
   }
@@ -333,6 +337,7 @@ function App() {
       setChatStats(prev => prev ? { ...prev, deleted: Math.max(0, prev.deleted - 1) } : prev);
     } catch (e) {
       console.error(e);
+      alert("לא ניתן לשחזר את ההודעה.");
     }
   }
 
@@ -430,7 +435,7 @@ function App() {
           <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#dfe5e7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
             💬
           </div>
-          <h1>WhatsApp Export Viewer</h1>
+          <h1>מציג ייצוא WhatsApp</h1>
         </div>
         <div className="sidebar-search">
           <input
@@ -530,7 +535,7 @@ function App() {
               </div>
               <div className="chat-header-actions">
                 <button className="header-btn" onClick={() => setSearchOpen(!searchOpen)} title="חיפוש (⌘F)">🔍</button>
-                <button className="header-btn" onClick={() => setInfoOpen(!infoOpen)} title="פרטי הקבוצה">ℹ️</button>
+                <button className="header-btn" onClick={() => setInfoOpen(!infoOpen)} title="פרטי השיחה">ℹ️</button>
               </div>
             </div>
 
@@ -665,7 +670,7 @@ function App() {
                               {msg.media_path && mediaType === "document" && (
                                 <div className="media-document">
                                   <div className="media-document-icon">
-                                    {(msg.media_filename || msg.media_path).split('.').pop()?.toUpperCase().slice(0, 3) || "DOC"}
+                                    {(msg.media_filename || msg.media_path).split('.').pop()?.toUpperCase().slice(0, 3) || "קובץ"}
                                   </div>
                                   <div className="media-document-info">
                                     <div className="media-document-name">
@@ -755,9 +760,9 @@ function App() {
         ) : (
           <div className="empty-state">
             <div style={{ fontSize: 80, opacity: 0.3 }}>💬</div>
-            <h2>WhatsApp Export Viewer</h2>
+            <h2>מציג ייצוא WhatsApp</h2>
             <p>
-              ייבא קובץ ZIP של WhatsApp Export כדי לצפות בשיחה.
+              ייבא קובץ ZIP שיוצא מ־WhatsApp כדי לצפות בשיחה.
               <br />
               גרור קובץ ZIP לכאן או לחץ על הכפתור למטה.
             </p>

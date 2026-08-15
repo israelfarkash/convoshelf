@@ -25,5 +25,5 @@ pub fn run() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running Tauri application");
+        .expect("אירעה שגיאה בהפעלת האפליקציה");
 }

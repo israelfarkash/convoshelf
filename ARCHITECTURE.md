@@ -1,45 +1,46 @@
-# Architecture
+# ארכיטקטורת המערכת
 
-## Overview
+## סקירה כללית
 
-WhatsApp Export Viewer is a Tauri 2 desktop app. React renders the Hebrew RTL interface, while Rust owns ZIP extraction, parsing, SQLite persistence, and local media reads. No chat content is sent over the network.
+מציג ייצוא WhatsApp הוא יישום שולחן עבודה המבוסס על Tauri 2. ממשק React מציג חוויית שימוש עברית מימין לשמאל, ו־Rust אחראי לחילוץ קובצי ZIP, לפענוח השיחה, לשמירת SQLite ולהגשת המדיה המקומית. תוכן השיחות אינו נשלח ברשת.
 
-## Runtime flow
+## זרימת העבודה
 
-1. The user selects or drops a WhatsApp `.zip` export.
-2. `src-tauri/src/importer.rs` validates and extracts entries into a unique app-data directory.
-3. The importer parses the chat text and writes chats and messages to SQLite in one transaction.
-4. `src/App.tsx` requests chats, messages, and statistics through narrow Tauri commands.
-5. `src/MediaDisplay.tsx` displays media through Tauri's local asset protocol, whose scope is restricted to the app's imports directory.
+1. המשתמש בוחר או גורר קובץ ZIP שיוצא מ־WhatsApp.
+2. הקובץ `src-tauri/src/importer.rs` בודק את רשומות הארכיון ומחלץ אותן לתיקייה ייחודית בנתוני האפליקציה.
+3. מנגנון הייבוא מפענח את קובץ הטקסט ושומר את השיחה וההודעות ב־SQLite בתוך עסקה אחת.
+4. הקובץ `src/App.tsx` מבקש שיחות, הודעות וסטטיסטיקות באמצעות פקודות Tauri מצומצמות.
+5. הקובץ `src/MediaDisplay.tsx` מציג מדיה דרך פרוטוקול הנכסים המקומי של Tauri, המוגבל לתיקיית הייבוא של האפליקציה.
 
-## Modules
+## רכיבים עיקריים
 
-- `src/App.tsx`: application state, chat/message rendering, search, import, and local edit actions.
-- `src/MediaDisplay.tsx`: lazy local media rendering through Tauri's scoped asset protocol.
-- `src/index.css`: all visual styling, including a locally generated chat background pattern.
-- `src-tauri/src/importer.rs`: safe ZIP extraction, WhatsApp text parsing, and media encoding.
-- `src-tauri/src/database.rs`: schema initialization and SQLite queries/updates.
-- `src-tauri/src/models.rs`: values serialized from Rust to the frontend.
-- `src-tauri/src/lib.rs`: Tauri plugins, command registration, and database startup.
+- `src/App.tsx`: מצב האפליקציה, הצגת שיחות והודעות, חיפוש, ייבוא ועריכות מקומיות.
+- `src/MediaDisplay.tsx`: הצגה עצלה של מדיה מקומית דרך פרוטוקול נכסים מוגבל.
+- `src/index.css`: כל עיצוב הממשק, כולל תבנית רקע הנוצרת מקומית.
+- `src-tauri/src/importer.rs`: חילוץ ZIP מאובטח, פענוח טקסט של WhatsApp וקישור קובצי מדיה.
+- `src-tauri/src/database.rs`: יצירת הסכמה ושאילתות או עדכונים ב־SQLite.
+- `src-tauri/src/models.rs`: מבני הנתונים המועברים מ־Rust לממשק.
+- `src-tauri/src/storage.rs`: איתור תיקיית הנתונים הנוכחית ותאימות לגרסאות קודמות.
+- `src-tauri/src/lib.rs`: רישום תוספים, פקודות Tauri ואתחול מסד הנתונים.
 
-## Storage
+## אחסון
 
-Tauri resolves the platform app-data directory. The app stores:
+Tauri מאתר את תיקיית נתוני האפליקציה במערכת. בתוכה נשמרים:
 
 ```text
 database.sqlite
-imports/<unique-import-id>/...
+imports/<מזהה-ייבוא-ייחודי>/...
 ```
 
-The selected source archive is read only and is never modified. Edits and deletions affect only the local SQLite copy and preserve original message text for restoration.
+ארכיון המקור נקרא בלבד ואינו משתנה. עריכות ומחיקות משפיעות רק על העותק המקומי ב־SQLite, והטקסט המקורי נשמר לצורך שחזור.
 
-Existing installations that used the legacy `com.whatsappexportviewer.app` identifier continue to use that data directory automatically, so upgrades do not duplicate or hide imported chats.
+התקנות קיימות שהשתמשו במזהה הישן `com.whatsappexportviewer.app` ממשיכות להשתמש אוטומטית בתיקיית הנתונים הישנה, כדי ששדרוג לא ישכפל או יסתיר שיחות שיובאו בעבר.
 
-## Offline and security boundaries
+## גבולות אבטחה ואופליין
 
-- Production CSP permits only bundled resources, data/blob media, and Tauri IPC.
-- The app has dialog permission but no frontend filesystem permission.
-- ZIP paths must pass `enclosed_name`, preventing absolute paths and parent traversal.
-- Archive file count and extracted size are limited.
-- Failed imports remove their partial extraction directory and roll back their database transaction.
-- The asset protocol can read only the current imports directory and the exact legacy macOS imports directory used by earlier releases.
+- מדיניות האבטחה של גרסת הייצור מתירה רק משאבים מצורפים, מדיה מקומית ותקשורת IPC של Tauri.
+- לממשק יש הרשאה לפתיחת חלון בחירת קובץ, אך אין לו הרשאת גישה כללית למערכת הקבצים.
+- נתיבי ZIP חייבים לעבור את בדיקת `enclosed_name`, המונעת נתיבים מוחלטים ומעבר לתיקיות אב.
+- מספר הקבצים בארכיון והגודל הכולל לאחר חילוץ מוגבלים.
+- ייבוא שנכשל מסיר את תיקיית החילוץ החלקית ומבטל את עסקת מסד הנתונים.
+- פרוטוקול הנכסים יכול לקרוא רק מתיקיית הייבוא הנוכחית ומתיקיית הייבוא המדויקת של גרסת macOS הישנה.
