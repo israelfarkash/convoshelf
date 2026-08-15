@@ -1,7 +1,7 @@
 [package]
-name = "whatsapp-export-viewer"
-version = "1.0.0"
-description = "מציג פרטי ולא מקוון לשיחות WhatsApp שיוצאו"
+name = "convoshelf"
+version = "1.1.0"
+description = "ConvoShelf - מציג פרטי ולא מקוון לשיחות שיוצאו"
 authors = ["Israel Farkash"]
 edition = "2021"
 rust-version = "1.77.2"
@@ -9,7 +9,7 @@ rust-version = "1.77.2"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-name = "whatsapp_export_viewer_lib"
+name = "convoshelf_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

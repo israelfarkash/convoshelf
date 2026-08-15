@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "מציג ייצוא WhatsApp",
-  "version": "1.0.0",
-  "identifier": "com.israelfarkash.whatsappexportviewer",
+  "productName": "ConvoShelf",
+  "version": "1.1.0",
+  "identifier": "com.israelfarkash.convoshelf",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "מציג ייצוא WhatsApp",
+        "title": "ConvoShelf",
         "width": 1200,
         "height": 800,
         "resizable": true,
@@ -28,6 +28,7 @@
         "scope": {
           "allow": [
             "$APPDATA/imports/**",
+            "$HOME/Library/Application Support/com.israelfarkash.whatsappexportviewer/imports/**",
             "$HOME/Library/Application Support/com.whatsappexportviewer.app/imports/**"
           ]
         }

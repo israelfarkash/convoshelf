@@ -435,7 +435,7 @@ function App() {
           <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#dfe5e7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
             💬
           </div>
-          <h1>מציג ייצוא WhatsApp</h1>
+          <h1>ConvoShelf</h1>
         </div>
         <div className="sidebar-search">
           <input
@@ -760,7 +760,7 @@ function App() {
         ) : (
           <div className="empty-state">
             <div style={{ fontSize: 80, opacity: 0.3 }}>💬</div>
-            <h2>מציג ייצוא WhatsApp</h2>
+            <h2>ConvoShelf</h2>
             <p>
               ייבא קובץ ZIP שיוצא מ־WhatsApp כדי לצפות בשיחה.
               <br />

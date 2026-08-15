@@ -401,6 +401,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "245097e9a4535ee1e3e3931fcfcd55a796a44c643e8596ff6566d68f09b87bbc"
 
 [[package]]
+name = "convoshelf"
+version = "1.1.0"
+dependencies = [
+ "chrono",
+ "regex",
+ "rusqlite",
+ "serde",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "uuid",
+ "zip",
+]
+
+[[package]]
 name = "cookie"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4231,21 +4246,6 @@ dependencies = [
  "thiserror 2.0.20",
  "windows",
  "windows-core 0.61.2",
-]
-
-[[package]]
-name = "whatsapp-export-viewer"
-version = "1.0.0"
-dependencies = [
- "chrono",
- "regex",
- "rusqlite",
- "serde",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "uuid",
- "zip",
 ]
 
 [[package]]

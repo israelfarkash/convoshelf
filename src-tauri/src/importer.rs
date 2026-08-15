@@ -167,7 +167,7 @@ pub fn import_zip(app_handle: tauri::AppHandle, zip_path: String) -> Result<Stri
         chat_name = Path::new(&zip_path)
             .file_stem()
             .and_then(|stem| stem.to_str())
-            .unwrap_or("שיחת WhatsApp")
+            .unwrap_or("שיחה מיובאת")
             .to_string();
     }
     
